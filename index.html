@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Polido</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<style>
+  body { margin:0; background:black; overflow:hidden; touch-action: none; }
+  canvas { display:block; background:black; }
+  #score { position:absolute; top:10px; left:10px; color:white; font-family:sans-serif; font-size:24px; z-index:10; }
+</style>
+</head>
+<body>
+<div id="score">Pontuação: 0</div>
+<canvas id="gameCanvas"></canvas>
+<script>
+const canvas=document.getElementById('gameCanvas');
+const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+
+let score=0;
+const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+function playSound(f,d){const o=audioCtx.createOscillator();o.type='square';o.frequency.setValueAtTime(f,audioCtx.currentTime);o.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+d);}
+
+// Nave
+const ship={x:canvas.width/2,y:canvas.height/2,angle:0,speed:0,radius:15,thrust:false};
+const bullets=[];
+const asteroids=[];
+const explosions=[];
+let rotate=0; // -1 esquerda, 1 direita
+let touching=false;
+
+// Asteroides iniciais
+function createAsteroids(num){
+  for(let i=0;i<num;i++){
+    let points=[];
+    const radius=20+Math.random()*20;
+    const n=6+Math.floor(Math.random()*6);
+    for(let j=0;j<n;j++) points.push(radius*(0.7+Math.random()*0.6));
+    asteroids.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,dx:(Math.random()-0.5)*2,dy:(Math.random()-0.5)*2,radius:radius,points:points});
+  }
+}
+createAsteroids(5);
+
+// Explosão
+function createExplosion(x,y){for(let i=0;i<15;i++) explosions.push({x:x,y:y,dx:(Math.random()-0.5)*4,dy:(Math.random()-0.5)*4,radius:2+Math.random()*2,life:30});playSound(300,0.1);}
+function shoot(){bullets.push({x:ship.x+Math.cos(ship.angle)*ship.radius,y:ship.y+Math.sin(ship.angle)*ship.radius,dx:Math.cos(ship.angle)*7,dy:Math.sin(ship.angle)*7,radius:2,life:60});playSound(800,0.05);}
+
+// Desenhar nave
+function drawShip(){ctx.save();ctx.translate(ship.x,ship.y);ctx.rotate(ship.angle);ctx.beginPath();ctx.moveTo(0,-ship.radius);ctx.lineTo(ship.radius/2,ship.radius);ctx.lineTo(-ship.radius/2,ship.radius);ctx.closePath();ctx.strokeStyle="white";ctx.stroke();if(ship.thrust){ctx.beginPath();ctx.moveTo(0,ship.radius);ctx.lineTo(5,ship.radius+10+Math.random()*5);ctx.lineTo(-5,ship.radius+10+Math.random()*5);ctx.closePath();ctx.fillStyle="orange";ctx.fill();}ctx.restore();}
+function drawAsteroids(){ctx.strokeStyle="white";asteroids.forEach(a=>{ctx.beginPath();const n=a.points.length;for(let i=0;i<n;i++){const angle=(i/n)*Math.PI*2;const x=a.x+a.points[i]*Math.cos(angle);const y=a.y+a.points[i]*Math.sin(angle);if(i===0) ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.closePath();ctx.stroke();});}
+function drawBullets(){ctx.fillStyle="white";bullets.forEach(b=>{ctx.beginPath();ctx.arc(b.x,b.y,b.radius,0,Math.PI*2);ctx.fill();});}
+function drawExplosions(){ctx.fillStyle="orange";explosions.forEach((e,i)=>{ctx.beginPath();ctx.arc(e.x,e.y,e.radius,0,Math.PI*2);ctx.fill();e.x+=e.dx;e.y+=e.dy;e.life--;if(e.life<=0) explosions.splice(i,1);});}
+
+// Atualizar posições
+function update(){
+  ship.thrust=false;
+  if(rotate!=0) ship.angle+=0.05*rotate;
+  if(touching){ship.speed+=0.15;ship.thrust=true; if(bullets.length<10) shoot();}else ship.speed*=0.98;
+  if(ship.speed>5) ship.speed=5;
+  ship.x+=Math.cos(ship.angle)*ship.speed; ship.y+=Math.sin(ship.angle)*ship.speed;
+  if(ship.x<0) ship.x=canvas.width;if(ship.x>canvas.width) ship.x=0;
+  if(ship.y<0) ship.y=canvas.height;if(ship.y>canvas.height) ship.y=0;
+
+  bullets.forEach((b,i)=>{b.x+=b.dx;b.y+=b.dy;b.life--;if(b.life<=0) bullets.splice(i,1);if(b.x<0)b.x=canvas.width;if(b.x>canvas.width)b.x=0;if(b.y<0)b.y=canvas.height;if(b.y>canvas.height)b.y=0;});
+  asteroids.forEach(a=>{a.x+=a.dx;a.y+=a.dy;if(a.x<0)a.x=canvas.width;if(a.x>canvas.width)a.x=0;if(a.y<0)a.y=canvas.height;if(a.y>canvas.height)a.y=0;});
+
+  bullets.forEach((b,bi)=>{asteroids.forEach((a,ai)=>{const dx=b.x-a.x;const dy=b.y-a.y;const dist=Math.sqrt(dx*dx+dy*dy);if(dist<b.radius+a.radius){bullets.splice(bi,1);asteroids.splice(ai,1);createExplosion(a.x,a.y);score+=10;document.getElementById('score').innerText="Pontuação: "+score;if(a.radius>15){for(let k=0;k<2;k++){const newPoints=a.points.map(p=>p*0.5);asteroids.push({x:a.x,y:a.y,dx:(Math.random()-0.5)*2,dy:(Math.random()-0.5)*2,radius:a.radius/2,points:newPoints});}}}});});
+
+  asteroids.forEach(a=>{const dx=ship.x-a.x;const dy=ship.y-a.y;if(Math.sqrt(dx*dx+dy*dy)<ship.radius+a.radius){alert("Game Over!\nPontuação: "+score);window.location.reload();}});
+  if(Math.random()<0.005) createAsteroids(1);
+}
+
+// Desenhar tudo
+function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);drawShip();drawAsteroids();drawBullets();drawExplosions();}
+function loop(){update();draw();requestAnimationFrame(loop);}
+loop();
+window.addEventListener('resize',()=>{canvas.width=window.innerWidth;canvas.height=window.innerHeight;});
+
+// Controles por toque: deslizar para girar, tocar para acelerar e atirar
+let startX=null;
+canvas.addEventListener('touchstart',e=>{touching=true;if(e.touches.length>0) startX=e.touches[0].clientX;});
+canvas.addEventListener('touchmove',e=>{if(e.touches.length>0){let deltaX=e.touches[0].clientX-startX;if(deltaX<-20) rotate=-1;else if(deltaX>20) rotate=1;else rotate=0;}});
+canvas.addEventListener('touchend',e=>{touching=false;rotate=0;startX=null;});
+canvas.addEventListener('touchcancel',e=>{touching=false;rotate=0;startX=null;});
+</script>
+</body>
+</html>
